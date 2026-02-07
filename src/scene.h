@@ -36,6 +36,7 @@ typedef struct {
     bool   solid;
     AABB   bounds;
     bool   visible;
+    bool   recyclable;
 } SceneObject;
 
 #define MAX_SCENE_OBJECTS 256

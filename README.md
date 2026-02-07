@@ -2,6 +2,8 @@
 
 A 3D game engine written in C that renders everything on the CPU. There are no GPU graphics APIs involved — no OpenGL, no Vulkan, no Metal. Every pixel that appears on screen is computed by C code and written into a flat array of integers. SDL2 is used only to create a window and copy that array to the screen once per frame. It does nothing else.
 
+![Screenshot](screenshot.jpeg)
+
 ## How It Works
 
 The renderer operates on a framebuffer: a one-dimensional array of pixels laid out in row-major order, paired with a depth buffer of the same size. These two arrays are the only destination for all rendering output. Everything visible on screen was written to them by the engine's own code.
@@ -40,9 +42,21 @@ The debug console works through a command registry. Each command is a name paire
 
 When the console is open, keyboard input is routed to it instead of to the camera and game controls.
 
+### Physics
+
+The engine includes a physics simulation that runs between input handling and rendering. Gravity pulls the player and objects downward at 20 units per second squared. The player can jump with the spacebar when standing on the ground or on top of a solid object. Toggling fly mode or noclip off in mid-air causes the player to fall naturally.
+
+Pressing Q throws stones — small textured spheres that launch from the camera in the look direction at 18 units per second. Holding Q fires continuously at roughly 6.6 stones per second. Stones are affected by gravity, bounce off the floor, walls, crates, and other objects with velocity reflection and configurable restitution. They come to rest when their energy drops below a threshold, and expire after 8 seconds to free their scene object slot for reuse.
+
+Four balls are placed around the scene as physics targets. They start at rest but react when hit by stones or pushed by the player. Sphere-versus-sphere collision reflects the stone's velocity along the collision normal and transfers a fraction of its momentum to the ball. The player can also kick balls and stones by walking into them.
+
+Physics bodies are stored in a separate array from scene objects, connected by index. This keeps velocity, restitution, and lifetime data out of the rendering path. Scene object slots are recycled when stones expire — new projectiles reuse dead slots instead of consuming fresh ones, keeping the 256-object limit from being exhausted.
+
+Sphere meshes for stones and balls are generated procedurally by the asset generator as OBJ files, at two resolutions: 96 triangles for stones and 384 for balls.
+
 ### Scene
 
-The default scene is a walled room with a tiled floor and scattered crates. The floor is an 8x8 grid of quads with repeating tile UVs for visible grout lines at distance. The walls are simple boxes scaled to enclose the room, with brick-pattern UVs that tile proportionally to their dimensions so the texture is not stretched. The crates sit on the floor and bob up and down on sine waves at slightly different speeds. All geometry in the scene has axis-aligned bounding boxes for collision — the player cannot walk through walls or crates.
+The default scene is a walled room with a tiled floor, scattered crates, and four balls. The floor is an 8x8 grid of quads with repeating tile UVs for visible grout lines at distance. The walls are simple boxes scaled to enclose the room, with brick-pattern UVs that tile proportionally to their dimensions so the texture is not stretched. The crates sit on the floor and bob up and down on sine waves at slightly different speeds. The balls are procedurally generated spheres with a red-orange texture. All geometry in the scene has axis-aligned bounding boxes for collision — the player cannot walk through walls or crates.
 
 ### Camera Modes
 
@@ -85,16 +99,20 @@ The only external dependency is SDL2. On macOS, install it through Homebrew. The
 ## Controls
 
 - WASD to move, mouse to look
+- Space to jump
+- Q to throw stones (hold for continuous fire)
 - F1 shows game flags, F3 shows debug info, F4 shows strip statistics
 - Tilde (~) opens the debug console
 - `thirdperson` — toggle first-person / third-person camera
 - `model <name>` — change player model (penger, cyber, real-penger, suitger)
-- `fog`, `fly`, `noclip`, `wireframe`, `zbuffer` — toggle game flags
+- `fog`, `fly`, `noclip`, `wireframe`, `zbuffer`, `gravity` — toggle game flags
 - Escape to quit
 
 ## Acknowledgements
 
 The original idea for this project comes from the [Software Rendering](https://youtube.com/playlist?list=PLpM-Dvs8t0VaOBDp6cVRLBScgSJ2L8blq&si=Bc3OPmiyg6TPAIEn) series by Tsoding Daily.
+
+Player models are from the [penger-obj](https://github.com/Max-Kawula/penger-obj) collection by Max Kawula.
 
 ## License
 

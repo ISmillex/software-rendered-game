@@ -1,8 +1,13 @@
-// Generates a 64x64 crate texture as BMP
+// Generates procedural game assets (textures + models)
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 static void write_bmp(const char *path, uint8_t *pixels, int w, int h) {
     int row_size = ((w * 3 + 3) / 4) * 4;
@@ -275,12 +280,156 @@ static void gen_wall_obj(const char *path) {
     );
 }
 
+static void gen_sphere_obj(const char *path, int slices, int stacks) {
+    // Unit sphere: radius 0.5, centered at origin (diameter = 1.0, like cube)
+    FILE *f = fopen(path, "w");
+    if (!f) { fprintf(stderr, "Failed to create %s\n", path); return; }
+
+    fprintf(f, "# Sphere (%d slices x %d stacks)\n", slices, stacks);
+
+    // Vertices and UVs: (stacks+1) rows of (slices+1) columns
+    for (int j = 0; j <= stacks; j++) {
+        float phi = M_PI * (float)j / (float)stacks;  // 0 to PI (top to bottom)
+        float sp = sinf(phi);
+        float cp = cosf(phi);
+        for (int i = 0; i <= slices; i++) {
+            float theta = 2.0f * M_PI * (float)i / (float)slices;  // 0 to 2PI
+            float st = sinf(theta);
+            float ct = cosf(theta);
+            float x = sp * ct * 0.5f;
+            float y = cp * 0.5f;
+            float z = sp * st * 0.5f;
+            fprintf(f, "v %.6f %.6f %.6f\n", x, y, z);
+        }
+    }
+
+    for (int j = 0; j <= stacks; j++) {
+        for (int i = 0; i <= slices; i++) {
+            float u = (float)i / (float)slices;
+            float v = (float)j / (float)stacks;
+            fprintf(f, "vt %.6f %.6f\n", u, 1.0f - v);
+        }
+    }
+
+    // Faces: each grid cell = 2 triangles
+    // At the poles, only emit one triangle (fan) to avoid degenerates
+    int row = slices + 1;
+    for (int j = 0; j < stacks; j++) {
+        for (int i = 0; i < slices; i++) {
+            int v0 = j * row + i + 1;       // OBJ 1-indexed
+            int v1 = v0 + 1;
+            int v2 = v0 + row;
+            int v3 = v2 + 1;
+
+            if (j == 0) {
+                // Top pole: fan triangle from pole to first ring
+                fprintf(f, "f %d/%d %d/%d %d/%d\n", v0, v0, v3, v3, v2, v2);
+            } else if (j == stacks - 1) {
+                // Bottom pole: fan triangle from ring to bottom pole
+                fprintf(f, "f %d/%d %d/%d %d/%d\n", v0, v0, v1, v1, v2, v2);
+            } else {
+                // Normal quad = 2 triangles
+                fprintf(f, "f %d/%d %d/%d %d/%d\n", v0, v0, v3, v3, v2, v2);
+                fprintf(f, "f %d/%d %d/%d %d/%d\n", v0, v0, v1, v1, v3, v3);
+            }
+        }
+    }
+
+    fclose(f);
+    printf("Created %s (%d slices x %d stacks)\n", path, slices, stacks);
+}
+
+static void gen_stone_texture(const char *path) {
+    int w = 32, h = 32;
+    uint8_t *pixels = malloc(w * h * 3);
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int idx = (y * w + x) * 3;
+
+            // Base gray
+            uint8_t r = 120, g = 118, b = 115;
+
+            // Strong per-pixel noise for rough rock look
+            unsigned int hash = ((unsigned int)(x * 2654435761u) ^ (unsigned int)(y * 2246822519u));
+            int noise = (int)(hash % 25) - 12;
+            r = (uint8_t)(r + noise);
+            g = (uint8_t)(g + noise);
+            b = (uint8_t)(b + noise - 2);
+
+            // Darker speckles
+            unsigned int speckle = ((unsigned int)((x + 7) * 1103515245u) ^ (unsigned int)((y + 13) * 12345u));
+            if ((speckle % 11) < 2) {
+                r = (uint8_t)(r * 0.7f);
+                g = (uint8_t)(g * 0.7f);
+                b = (uint8_t)(b * 0.7f);
+            }
+
+            pixels[idx + 0] = r;
+            pixels[idx + 1] = g;
+            pixels[idx + 2] = b;
+        }
+    }
+
+    write_bmp(path, pixels, w, h);
+    free(pixels);
+}
+
+static void gen_ball_texture(const char *path) {
+    int w = 32, h = 32;
+    uint8_t *pixels = malloc(w * h * 3);
+
+    float cx = w / 2.0f, cy = h / 2.0f;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int idx = (y * w + x) * 3;
+
+            // Bright red-orange base
+            uint8_t r = 200, g = 60, b = 40;
+
+            // White stripe band (horizontal in UV space)
+            if (y >= 14 && y <= 17) {
+                r = 240; g = 240; b = 240;
+            }
+
+            // Specular highlight in upper-left area
+            float dx = (float)x - cx * 0.6f;
+            float dy = (float)y - cy * 0.4f;
+            float dist = sqrtf(dx * dx + dy * dy);
+            if (dist < 6.0f) {
+                float t = 1.0f - dist / 6.0f;
+                r = (uint8_t)(r + (255 - r) * t * 0.7f);
+                g = (uint8_t)(g + (255 - g) * t * 0.7f);
+                b = (uint8_t)(b + (255 - b) * t * 0.7f);
+            }
+
+            // Subtle per-pixel noise
+            unsigned int hash = ((unsigned int)(x * 2654435761u) ^ (unsigned int)(y * 2246822519u));
+            int noise = (int)(hash % 9) - 4;
+            r = (uint8_t)((int)r + noise < 0 ? 0 : (int)r + noise > 255 ? 255 : (int)r + noise);
+            g = (uint8_t)((int)g + noise < 0 ? 0 : (int)g + noise > 255 ? 255 : (int)g + noise);
+            b = (uint8_t)((int)b + noise < 0 ? 0 : (int)b + noise > 255 ? 255 : (int)b + noise);
+
+            pixels[idx + 0] = r;
+            pixels[idx + 1] = g;
+            pixels[idx + 2] = b;
+        }
+    }
+
+    write_bmp(path, pixels, w, h);
+    free(pixels);
+}
+
 int main(void) {
     gen_crate_texture("assets/textures/crate.bmp");
     gen_floor_texture("assets/textures/floor.bmp");
     gen_wall_texture("assets/textures/wall.bmp");
+    gen_stone_texture("assets/textures/stone.bmp");
+    gen_ball_texture("assets/textures/ball.bmp");
     gen_floor_obj("assets/models/floor.obj");
     gen_wall_obj("assets/models/wall.obj");
+    gen_sphere_obj("assets/models/sphere_lo.obj", 8, 6);
+    gen_sphere_obj("assets/models/sphere_hi.obj", 16, 12);
     printf("Assets generated successfully!\n");
     return 0;
 }

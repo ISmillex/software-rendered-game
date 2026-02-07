@@ -18,6 +18,8 @@ void camera_init(Camera *cam) {
     cam->third_person = false;
     cam->tp_distance  = 4.0f;
     cam->tp_height    = 1.5f;
+    cam->velocity_y   = 0.0f;
+    cam->on_ground    = false;
 }
 
 void camera_handle_input(Camera *cam, const InputState *input, float dt) {
@@ -46,6 +48,7 @@ void camera_handle_input(Camera *cam, const InputState *input, float dt) {
     if (cam->fly_mode) {
         if (input->keys_down[SDL_SCANCODE_SPACE])  movement.y += 1.0f;
         if (input->keys_down[SDL_SCANCODE_LSHIFT]) movement.y -= 1.0f;
+        cam->velocity_y = 0.0f;
     }
 
     if (vec3_length(movement) > 0.0f) {
@@ -53,14 +56,30 @@ void camera_handle_input(Camera *cam, const InputState *input, float dt) {
         cam->position = vec3_add(cam->position,
                                  vec3_scale(movement, cam->move_speed * dt));
     }
+
+    // Gravity and jump (non-fly mode only)
+    if (!cam->fly_mode) {
+        if (g_flags.gravity_enabled) {
+            cam->velocity_y -= 20.0f * dt;
+        }
+        cam->position.y += cam->velocity_y * dt;
+
+        if (cam->on_ground && input->keys_down[SDL_SCANCODE_SPACE]) {
+            cam->velocity_y = 7.0f;
+            cam->on_ground = false;
+        }
+    }
 }
 
 void camera_apply_collision(Camera *cam, const Scene *scene) {
     if (cam->fly_mode || g_flags.noclip) return;
 
     // Ground constraint: keep feet at or above y=0
+    cam->on_ground = false;
     if (cam->position.y < PLAYER_EYE_HEIGHT) {
         cam->position.y = PLAYER_EYE_HEIGHT;
+        if (cam->velocity_y < 0.0f) cam->velocity_y = 0.0f;
+        cam->on_ground = true;
     }
 
     // Collide against solid scene objects
@@ -70,9 +89,23 @@ void camera_apply_collision(Camera *cam, const Scene *scene) {
 
         AABB bb = obj->bounds;
 
-        // Check Y overlap (player feet to head vs AABB)
         float feet_y = cam->position.y - PLAYER_EYE_HEIGHT;
         float head_y = cam->position.y + 0.1f;
+
+        // Check if standing on top of this object
+        if (feet_y <= bb.max.y + 0.05f && feet_y >= bb.max.y - 0.15f &&
+            cam->position.x >= bb.min.x - PLAYER_RADIUS &&
+            cam->position.x <= bb.max.x + PLAYER_RADIUS &&
+            cam->position.z >= bb.min.z - PLAYER_RADIUS &&
+            cam->position.z <= bb.max.z + PLAYER_RADIUS &&
+            cam->velocity_y <= 0.0f) {
+            cam->position.y = bb.max.y + PLAYER_EYE_HEIGHT;
+            cam->velocity_y = 0.0f;
+            cam->on_ground = true;
+            continue;
+        }
+
+        // Check Y overlap (player feet to head vs AABB)
         if (feet_y >= bb.max.y || head_y <= bb.min.y) continue;
 
         // XZ circle-vs-AABB test

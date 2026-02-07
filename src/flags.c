@@ -10,7 +10,10 @@ GameFlags g_flags = {
     .show_zbuffer       = false,
     .show_chunk_borders = false,
     .third_person       = false,
+    .gravity_enabled    = true,
 };
+
+Camera *g_camera = NULL;
 
 static void cmd_fog(int argc, const char **argv) {
     if (argc < 2) {
@@ -29,6 +32,9 @@ static void cmd_fog(int argc, const char **argv) {
 static void cmd_fly(int argc, const char **argv) {
     (void)argc; (void)argv;
     g_flags.fly_mode = !g_flags.fly_mode;
+    if (!g_flags.fly_mode && g_camera) {
+        g_camera->velocity_y = 0.0f;
+    }
     if (g_console) {
         console_printf(g_console, COLOR_RGB(255, 255, 0), "fly: %s",
                       g_flags.fly_mode ? "ON" : "OFF");
@@ -56,6 +62,9 @@ static void cmd_zbuffer(int argc, const char **argv) {
 static void cmd_noclip(int argc, const char **argv) {
     (void)argc; (void)argv;
     g_flags.noclip = !g_flags.noclip;
+    if (!g_flags.noclip && g_camera) {
+        g_camera->velocity_y = 0.0f;
+    }
     if (g_console) {
         console_printf(g_console, COLOR_RGB(255, 255, 0), "noclip: %s",
                       g_flags.noclip ? "ON" : "OFF");
@@ -71,6 +80,20 @@ static void cmd_thirdperson(int argc, const char **argv) {
     }
 }
 
+static void cmd_gravity(int argc, const char **argv) {
+    if (argc < 2) {
+        g_flags.gravity_enabled = !g_flags.gravity_enabled;
+    } else if (strcmp(argv[1], "on") == 0) {
+        g_flags.gravity_enabled = true;
+    } else if (strcmp(argv[1], "off") == 0) {
+        g_flags.gravity_enabled = false;
+    }
+    if (g_console) {
+        console_printf(g_console, COLOR_RGB(255, 255, 0), "gravity: %s",
+                      g_flags.gravity_enabled ? "ON" : "OFF");
+    }
+}
+
 void flags_register_commands(Console *con) {
     console_register_command(con, "fog",       "Toggle fog rendering",    cmd_fog);
     console_register_command(con, "fly",       "Toggle fly mode",         cmd_fly);
@@ -78,4 +101,5 @@ void flags_register_commands(Console *con) {
     console_register_command(con, "wireframe", "Toggle wireframe mode",   cmd_wireframe);
     console_register_command(con, "zbuffer",   "Show depth buffer",       cmd_zbuffer);
     console_register_command(con, "thirdperson", "Toggle third-person view", cmd_thirdperson);
+    console_register_command(con, "gravity",   "Toggle gravity [on|off]", cmd_gravity);
 }

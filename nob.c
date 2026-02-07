@@ -57,7 +57,8 @@ int main(int argc, char **argv)
         SRC_FOLDER"flags.c",
         SRC_FOLDER"hud.c",
         SRC_FOLDER"arena.c",
-        SRC_FOLDER"player.c"
+        SRC_FOLDER"player.c",
+        SRC_FOLDER"physics.c"
     );
 
     // Include path

@@ -17,6 +17,7 @@
 #include "flags.h"
 #include "hud.h"
 #include "player.h"
+#include "physics.h"
 
 static Camera     camera;
 static Scene      scene;
@@ -25,8 +26,10 @@ static HUD        hud;
 static Player     player;
 static GlyphCache glyph_cache;
 static Arena      frame_arena;
-static StripPool  strip_pool;
-static InputState input_state;
+static StripPool    strip_pool;
+static InputState   input_state;
+static PhysicsWorld physics_world;
+static Model       *stone_model;
 
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
@@ -53,6 +56,10 @@ int main(int argc, char *argv[]) {
 
     // 6. Game flags + register console commands
     flags_register_commands(&console);
+    g_camera = &camera;
+
+    // 6b. Physics
+    physics_init(&physics_world);
 
     // 7. Arena allocator
     arena_init(&frame_arena, FRAME_ARENA_SIZE);
@@ -132,6 +139,27 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Warning: Could not load cube model\n");
     }
 
+    // Balls (physics targets)
+    Model *ball_model = scene_load_model(&scene, "assets/models/sphere_hi.obj",
+                                          "assets/textures/ball.bmp");
+    if (ball_model) {
+        float ball_positions[][3] = { {3,0,3}, {-3,0,-3}, {5,0,0}, {0,0,-5} };
+        for (int i = 0; i < 4; i++) {
+            float d = BALL_RADIUS * 2.0f;
+            int idx = scene_add_object(&scene, ball_model,
+                vec3(ball_positions[i][0], BALL_RADIUS, ball_positions[i][2]),
+                vec3(0, 0, 0), vec3(d, d, d));
+            if (idx >= 0) {
+                scene_object_set_solid(&scene, idx);
+                physics_add_ball(&physics_world, idx, BALL_RADIUS, 0.8f);
+            }
+        }
+    }
+
+    // Stone model (projectiles)
+    stone_model = scene_load_model(&scene, "assets/models/sphere_lo.obj",
+                                    "assets/textures/stone.bmp");
+
     // 10. Player
     player_init(&player, &scene);
     player_register_commands(&console);
@@ -195,6 +223,23 @@ int main(int argc, char *argv[]) {
             camera_handle_input(&camera, &input_state, dt);
             camera_apply_collision(&camera, &scene);
             hud_handle_input(&hud, &input_state);
+
+            // Stone throwing (Q key, continuous while held)
+            if (stone_model && input_is_key_down(&input_state, SDL_SCANCODE_Q)) {
+                physics_world.throw_cooldown -= dt;
+                if (physics_world.throw_cooldown <= 0.0f) {
+                    Vec3 dir = vec3(
+                        sinf(camera.yaw) * cosf(camera.pitch),
+                        sinf(camera.pitch),
+                        -cosf(camera.yaw) * cosf(camera.pitch)
+                    );
+                    physics_spawn_stone(&physics_world, &scene, stone_model,
+                                        camera.position, dir);
+                    physics_world.throw_cooldown = THROW_COOLDOWN;
+                }
+            } else {
+                physics_world.throw_cooldown = 0.0f;
+            }
         }
 
         // Sync flags to camera
@@ -206,6 +251,9 @@ int main(int argc, char *argv[]) {
         player_update(&player, &scene, &camera);
 
         // --- 2. UPDATE ---
+        physics_player_interact(&physics_world, &scene, camera.position, 0.3f);
+        physics_update(&physics_world, &scene, dt);
+        physics_cleanup(&physics_world, &scene);
         scene_update(&scene, dt);
 
         // --- 3. CHUNK GENERATION ---

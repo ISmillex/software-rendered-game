@@ -19,6 +19,8 @@ typedef struct {
     bool  third_person;
     float tp_distance;
     float tp_height;
+    float velocity_y;
+    bool  on_ground;
 } Camera;
 
 void camera_init(Camera *cam);

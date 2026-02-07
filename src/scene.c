@@ -238,8 +238,18 @@ Model *scene_load_model(Scene *scene, const char *obj_path, const char *texture_
 }
 
 int scene_add_object(Scene *scene, Model *model, Vec3 position, Vec3 rotation, Vec3 scale) {
-    if (scene->object_count >= MAX_SCENE_OBJECTS) return -1;
-    int idx = scene->object_count++;
+    // Try to reuse a recyclable slot first
+    int idx = -1;
+    for (int i = 0; i < scene->object_count; i++) {
+        if (scene->objects[i].recyclable) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0) {
+        if (scene->object_count >= MAX_SCENE_OBJECTS) return -1;
+        idx = scene->object_count++;
+    }
     SceneObject *obj = &scene->objects[idx];
     obj->model          = model;
     obj->position       = position;
@@ -253,6 +263,7 @@ int scene_add_object(Scene *scene, Model *model, Vec3 position, Vec3 rotation, V
     obj->solid          = false;
     obj->bounds         = (AABB){ vec3(0,0,0), vec3(0,0,0) };
     obj->visible        = true;
+    obj->recyclable     = false;
     return idx;
 }
 
