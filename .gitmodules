@@ -1,0 +1,3 @@
+[submodule "assets/models/penger-obj"]
+	path = assets/models/penger-obj
+	url = git@github.com:Max-Kawula/penger-obj.git

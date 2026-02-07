@@ -14,7 +14,10 @@ void camera_init(Camera *cam) {
     cam->far_plane  = 100.0f;
     cam->move_speed = 5.0f;
     cam->mouse_sens = 0.003f;
-    cam->fly_mode   = false;
+    cam->fly_mode     = false;
+    cam->third_person = false;
+    cam->tp_distance  = 4.0f;
+    cam->tp_height    = 1.5f;
 }
 
 void camera_handle_input(Camera *cam, const InputState *input, float dt) {
@@ -108,6 +111,17 @@ Mat4 camera_view_matrix(const Camera *cam) {
         sinf(cam->pitch),
         -cosf(cam->yaw) * cosf(cam->pitch)
     );
+
+    if (cam->third_person) {
+        // Camera orbits behind and above the player
+        Vec3 eye = vec3(
+            cam->position.x - direction.x * cam->tp_distance,
+            cam->position.y + cam->tp_height,
+            cam->position.z - direction.z * cam->tp_distance
+        );
+        return mat4_look_at(eye, cam->position, vec3(0, 1, 0));
+    }
+
     Vec3 target = vec3_add(cam->position, direction);
     return mat4_look_at(cam->position, target, vec3(0, 1, 0));
 }

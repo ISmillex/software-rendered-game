@@ -5,6 +5,10 @@
 #include <string.h>
 #include <math.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include "stb_image.h"
+
 void scene_init(Scene *scene) {
     memset(scene, 0, sizeof(Scene));
 }
@@ -71,6 +75,41 @@ Texture *texture_load_bmp(const char *path) {
     return tex;
 }
 
+// --- PNG Loader (via stb_image) ---
+static Texture *texture_load_png(const char *path) {
+    int w, h, channels;
+    stbi_set_flip_vertically_on_load(1);
+    unsigned char *data = stbi_load(path, &w, &h, &channels, 4); // force RGBA
+    if (!data) {
+        fprintf(stderr, "Failed to load PNG: %s\n", path);
+        return NULL;
+    }
+
+    Texture *tex = malloc(sizeof(Texture));
+    tex->width  = w;
+    tex->height = h;
+    tex->pixels = malloc(w * h * sizeof(uint32_t));
+
+    for (int i = 0; i < w * h; i++) {
+        unsigned char r = data[i * 4 + 0];
+        unsigned char g = data[i * 4 + 1];
+        unsigned char b = data[i * 4 + 2];
+        tex->pixels[i] = COLOR_RGB(r, g, b);
+    }
+
+    stbi_image_free(data);
+    return tex;
+}
+
+Texture *texture_load(const char *path) {
+    if (!path) return NULL;
+    size_t len = strlen(path);
+    if (len >= 4 && strcmp(path + len - 4, ".png") == 0) {
+        return texture_load_png(path);
+    }
+    return texture_load_bmp(path);
+}
+
 // --- OBJ Loader ---
 Model *scene_load_model(Scene *scene, const char *obj_path, const char *texture_path) {
     if (scene->model_count >= MAX_MODELS) {
@@ -84,13 +123,25 @@ Model *scene_load_model(Scene *scene, const char *obj_path, const char *texture_
         return NULL;
     }
 
-    // First pass: count
+    // First pass: count (quads count as 2 triangles)
     int vert_count = 0, uv_count = 0, face_count = 0;
     char line[512];
     while (fgets(line, sizeof(line), f)) {
         if (line[0] == 'v' && line[1] == ' ')       vert_count++;
         else if (line[0] == 'v' && line[1] == 't')  uv_count++;
-        else if (line[0] == 'f' && line[1] == ' ')  face_count++;
+        else if (line[0] == 'f' && line[1] == ' ') {
+            // Count vertex groups to detect quads
+            int groups = 0;
+            const char *p = line + 2;
+            while (*p && *p != '\n' && *p != '\r') {
+                while (*p == ' ') p++;
+                if (*p && *p != '\n' && *p != '\r') {
+                    groups++;
+                    while (*p && *p != ' ' && *p != '\n' && *p != '\r') p++;
+                }
+            }
+            face_count += (groups == 4) ? 2 : 1;
+        }
     }
 
     Model *model = &scene->models[scene->model_count++];
@@ -117,29 +168,61 @@ Model *scene_load_model(Scene *scene, const char *obj_path, const char *texture_
             model->uvs[ui++] = vec2(u, v);
         }
         else if (line[0] == 'f' && line[1] == ' ') {
-            int v0, v1, v2, vt0 = -1, vt1 = -1, vt2 = -1;
+            int v[4] = {0}, vt[4] = {-1,-1,-1,-1};
             int vn;
-            if (sscanf(line + 2, "%d/%d/%d %d/%d/%d %d/%d/%d",
-                        &v0, &vt0, &vn, &v1, &vt1, &vn, &v2, &vt2, &vn) >= 9) {
-                // v/vt/vn format
-            } else if (sscanf(line + 2, "%d/%d %d/%d %d/%d",
-                               &v0, &vt0, &v1, &vt1, &v2, &vt2) >= 6) {
-                // v/vt format
-            } else if (sscanf(line + 2, "%d//%d %d//%d %d//%d",
-                               &v0, &vn, &v1, &vn, &v2, &vn) >= 6) {
-                // v//vn format (no UVs)
-                vt0 = vt1 = vt2 = -1;
-            } else {
-                sscanf(line + 2, "%d %d %d", &v0, &v1, &v2);
-                vt0 = vt1 = vt2 = -1;
+            int nverts = 0;
+
+            // Try quad formats first (4 vertex groups)
+            if (sscanf(line + 2, "%d/%d/%d %d/%d/%d %d/%d/%d %d/%d/%d",
+                        &v[0], &vt[0], &vn, &v[1], &vt[1], &vn,
+                        &v[2], &vt[2], &vn, &v[3], &vt[3], &vn) >= 12) {
+                nverts = 4;
+            } else if (sscanf(line + 2, "%d/%d %d/%d %d/%d %d/%d",
+                               &v[0], &vt[0], &v[1], &vt[1],
+                               &v[2], &vt[2], &v[3], &vt[3]) >= 8) {
+                nverts = 4;
+            } else if (sscanf(line + 2, "%d//%d %d//%d %d//%d %d//%d",
+                               &v[0], &vn, &v[1], &vn,
+                               &v[2], &vn, &v[3], &vn) >= 8) {
+                nverts = 4; vt[0] = vt[1] = vt[2] = vt[3] = -1;
+            } else if (sscanf(line + 2, "%d %d %d %d",
+                               &v[0], &v[1], &v[2], &v[3]) >= 4) {
+                nverts = 4; vt[0] = vt[1] = vt[2] = vt[3] = -1;
             }
-            model->face_verts[fi * 3 + 0] = v0 - 1;
-            model->face_verts[fi * 3 + 1] = v1 - 1;
-            model->face_verts[fi * 3 + 2] = v2 - 1;
-            model->face_uvs[fi * 3 + 0] = vt0 > 0 ? vt0 - 1 : -1;
-            model->face_uvs[fi * 3 + 1] = vt1 > 0 ? vt1 - 1 : -1;
-            model->face_uvs[fi * 3 + 2] = vt2 > 0 ? vt2 - 1 : -1;
+            // Triangle formats (3 vertex groups)
+            else if (sscanf(line + 2, "%d/%d/%d %d/%d/%d %d/%d/%d",
+                        &v[0], &vt[0], &vn, &v[1], &vt[1], &vn, &v[2], &vt[2], &vn) >= 9) {
+                nverts = 3;
+            } else if (sscanf(line + 2, "%d/%d %d/%d %d/%d",
+                               &v[0], &vt[0], &v[1], &vt[1], &v[2], &vt[2]) >= 6) {
+                nverts = 3;
+            } else if (sscanf(line + 2, "%d//%d %d//%d %d//%d",
+                               &v[0], &vn, &v[1], &vn, &v[2], &vn) >= 6) {
+                nverts = 3; vt[0] = vt[1] = vt[2] = -1;
+            } else {
+                sscanf(line + 2, "%d %d %d", &v[0], &v[1], &v[2]);
+                nverts = 3; vt[0] = vt[1] = vt[2] = -1;
+            }
+
+            // First triangle: v0, v1, v2
+            model->face_verts[fi * 3 + 0] = v[0] - 1;
+            model->face_verts[fi * 3 + 1] = v[1] - 1;
+            model->face_verts[fi * 3 + 2] = v[2] - 1;
+            model->face_uvs[fi * 3 + 0] = vt[0] > 0 ? vt[0] - 1 : -1;
+            model->face_uvs[fi * 3 + 1] = vt[1] > 0 ? vt[1] - 1 : -1;
+            model->face_uvs[fi * 3 + 2] = vt[2] > 0 ? vt[2] - 1 : -1;
             fi++;
+
+            // Second triangle for quads: v0, v2, v3
+            if (nverts == 4) {
+                model->face_verts[fi * 3 + 0] = v[0] - 1;
+                model->face_verts[fi * 3 + 1] = v[2] - 1;
+                model->face_verts[fi * 3 + 2] = v[3] - 1;
+                model->face_uvs[fi * 3 + 0] = vt[0] > 0 ? vt[0] - 1 : -1;
+                model->face_uvs[fi * 3 + 1] = vt[2] > 0 ? vt[2] - 1 : -1;
+                model->face_uvs[fi * 3 + 2] = vt[3] > 0 ? vt[3] - 1 : -1;
+                fi++;
+            }
         }
     }
 
@@ -148,7 +231,7 @@ Model *scene_load_model(Scene *scene, const char *obj_path, const char *texture_
     // Load texture
     model->texture = NULL;
     if (texture_path) {
-        model->texture = texture_load_bmp(texture_path);
+        model->texture = texture_load(texture_path);
     }
 
     return model;
@@ -169,6 +252,7 @@ int scene_add_object(Scene *scene, Model *model, Vec3 position, Vec3 rotation, V
     obj->anim_base_y    = position.y;
     obj->solid          = false;
     obj->bounds         = (AABB){ vec3(0,0,0), vec3(0,0,0) };
+    obj->visible        = true;
     return idx;
 }
 
@@ -357,6 +441,7 @@ void scene_generate_chunks(const Scene *scene, const Mat4 *vp, Arena *arena,
 
     for (int obj_i = 0; obj_i < scene->object_count; obj_i++) {
         const SceneObject *obj = &scene->objects[obj_i];
+        if (!obj->visible) continue;
         const Model *model = obj->model;
         if (!model) continue;
 

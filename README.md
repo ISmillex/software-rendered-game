@@ -8,7 +8,7 @@ The renderer operates on a framebuffer: a one-dimensional array of pixels laid o
 
 ### From Objects to Pixels
 
-The scene is made up of objects, each referencing a model (loaded from OBJ files at startup) and a texture (loaded from BMP files). Each frame, the engine walks through every object, transforms its triangles from their local coordinate space into screen coordinates using standard matrix math (model transform, then the camera's combined view-projection matrix), and produces a list of chunks.
+The scene is made up of objects, each referencing a model (loaded from OBJ files at startup) and a texture (loaded from BMP or PNG files). Each frame, the engine walks through every object, transforms its triangles from their local coordinate space into screen coordinates using standard matrix math (model transform, then the camera's combined view-projection matrix), and produces a list of chunks.
 
 A chunk is a single triangle ready to be drawn, along with the information needed to draw it — its screen-space vertices, a depth value for sorting, and either a solid color or a texture with UV coordinates. Chunks are the fundamental unit of rendering work in this engine. They serve the same role as draw calls in a GPU pipeline. Different chunk types map to different rasterizer functions, so adding a new rendering style means adding a new chunk type and writing its rasterizer.
 
@@ -36,9 +36,23 @@ The engine has several debug overlays drawn on top of the 3D scene after renderi
 
 ### Console and Flags
 
-The debug console works through a command registry. Each command is a name paired with a callback function. Game flags — fog, fly mode, wireframe rendering, depth buffer visualization — are registered as console commands at startup. Typing "fog" or "fly" in the console invokes the corresponding callback. The console maintains a ring buffer of messages and handles its own text input, cursor movement, and scrolling.
+The debug console works through a command registry. Each command is a name paired with a callback function. Game flags — fog, fly mode, wireframe rendering, depth buffer visualization, third-person camera — are registered as console commands at startup. Typing "fog" or "fly" in the console invokes the corresponding callback. The console maintains a ring buffer of messages and handles its own text input, cursor movement, and scrolling.
 
 When the console is open, keyboard input is routed to it instead of to the camera and game controls.
+
+### Scene
+
+The default scene is a walled room with a tiled floor and scattered crates. The floor is an 8x8 grid of quads with repeating tile UVs for visible grout lines at distance. The walls are simple boxes scaled to enclose the room, with brick-pattern UVs that tile proportionally to their dimensions so the texture is not stretched. The crates sit on the floor and bob up and down on sine waves at slightly different speeds. All geometry in the scene has axis-aligned bounding boxes for collision — the player cannot walk through walls or crates.
+
+### Camera Modes
+
+The engine supports two camera modes. First-person is the default: the camera is positioned at the player's eye height and looks in the direction of the mouse. Third-person mode is toggled via the `thirdperson` console command. In third-person, the camera pulls back behind and above the player at a fixed distance and height, looking down at the player's position. The player model becomes visible in third-person and is hidden in first-person. Movement controls are the same in both modes.
+
+### Player Model
+
+The player is represented by a model from the [penger-obj](https://github.com/Max-Kawula/penger-obj) collection, included as a git submodule. Four model variants are loaded at startup: penger, cyber, real-penger, and suitger. Each has its own OBJ mesh and PNG texture. The `model` console command switches between them at runtime. The player model tracks the camera's position and yaw each frame so it always appears at the player's feet facing the direction of movement. Each variant has a per-model scale factor so they all appear roughly the same size regardless of their original dimensions.
+
+The OBJ parser supports both triangle and quad faces. Quads are split into two triangles during loading. PNG textures are loaded using stb_image with vertical flipping to match the OBJ UV convention where V=0 is at the bottom of the image.
 
 ### Input
 
@@ -66,13 +80,16 @@ To generate procedural assets:
 ./nob assets
 ```
 
-The only external dependency is SDL2. On macOS, install it through Homebrew. The engine also links against pthreads and the standard math library.
+The only external dependency is SDL2. On macOS, install it through Homebrew. The engine also links against pthreads and the standard math library. Player models are included as a git submodule — run `git submodule update --init` after cloning.
 
 ## Controls
 
 - WASD to move, mouse to look
 - F1 shows game flags, F3 shows debug info, F4 shows strip statistics
 - Tilde (~) opens the debug console
+- `thirdperson` — toggle first-person / third-person camera
+- `model <name>` — change player model (penger, cyber, real-penger, suitger)
+- `fog`, `fly`, `noclip`, `wireframe`, `zbuffer` — toggle game flags
 - Escape to quit
 
 ## Acknowledgements

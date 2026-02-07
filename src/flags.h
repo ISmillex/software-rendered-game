@@ -11,6 +11,7 @@ typedef struct {
     bool show_wireframe;
     bool show_zbuffer;
     bool show_chunk_borders;
+    bool third_person;
 } GameFlags;
 
 extern GameFlags g_flags;

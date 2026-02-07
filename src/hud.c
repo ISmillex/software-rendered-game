@@ -34,6 +34,9 @@ void hud_render_flags(const GlyphCache *cache, const GameFlags *flags) {
     text_draw_string(cache, buf, x, y, color); y += cache->glyph_height + 2;
 
     snprintf(buf, sizeof(buf), "zbuffer: %s",   flags->show_zbuffer ? "ON" : "OFF");
+    text_draw_string(cache, buf, x, y, color); y += cache->glyph_height + 2;
+
+    snprintf(buf, sizeof(buf), "thirdperson: %s", flags->third_person ? "ON" : "OFF");
     text_draw_string(cache, buf, x, y, color);
 }
 

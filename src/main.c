@@ -16,11 +16,13 @@
 #include "console.h"
 #include "flags.h"
 #include "hud.h"
+#include "player.h"
 
 static Camera     camera;
 static Scene      scene;
 static Console    console;
 static HUD        hud;
+static Player     player;
 static GlyphCache glyph_cache;
 static Arena      frame_arena;
 static StripPool  strip_pool;
@@ -130,7 +132,11 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Warning: Could not load cube model\n");
     }
 
-    // 10. HUD
+    // 10. Player
+    player_init(&player, &scene);
+    player_register_commands(&console);
+
+    // 11. HUD
     memset(&hud, 0, sizeof(hud));
     hud.debug_overlay.active = true; // show FPS by default
 
@@ -191,8 +197,13 @@ int main(int argc, char *argv[]) {
             hud_handle_input(&hud, &input_state);
         }
 
-        // Sync fly_mode flag to camera
-        camera.fly_mode = g_flags.fly_mode;
+        // Sync flags to camera
+        camera.fly_mode     = g_flags.fly_mode;
+        camera.third_person = g_flags.third_person;
+
+        // Sync player visibility and update position
+        player.visible = g_flags.third_person;
+        player_update(&player, &scene, &camera);
 
         // --- 2. UPDATE ---
         scene_update(&scene, dt);

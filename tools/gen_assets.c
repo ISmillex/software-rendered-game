@@ -238,10 +238,21 @@ static void gen_wall_obj(const char *path) {
         "v  0.5  0.5 -0.05\n"
         "v -0.5  0.5 -0.05\n"
         "\n"
-        "vt 0.0 0.0\n"
-        "vt 1.0 0.0\n"
-        "vt 1.0 2.0\n"
-        "vt 0.0 2.0\n"
+        "# Large face UVs (front/back): tile 12x across, 2x up\n"
+        "vt  0.0 0.0\n"  /* 1 */
+        "vt 12.0 0.0\n"  /* 2 */
+        "vt 12.0 2.0\n"  /* 3 */
+        "vt  0.0 2.0\n"  /* 4 */
+        "# Side face UVs (left/right): narrow\n"
+        "vt 0.0 0.0\n"   /* 5 */
+        "vt 0.4 0.0\n"   /* 6 */
+        "vt 0.4 2.0\n"   /* 7 */
+        "vt 0.0 2.0\n"   /* 8 */
+        "# Cap UVs (top/bottom)\n"
+        "vt  0.0 0.0\n"  /* 9 */
+        "vt 12.0 0.0\n"  /* 10 */
+        "vt 12.0 0.4\n"  /* 11 */
+        "vt  0.0 0.4\n"  /* 12 */
         "\n"
         "# Front face\n"
         "f 1/1 2/2 3/3\n"
@@ -250,17 +261,17 @@ static void gen_wall_obj(const char *path) {
         "f 6/1 5/2 8/3\n"
         "f 6/1 8/3 7/4\n"
         "# Right face\n"
-        "f 2/1 6/2 7/3\n"
-        "f 2/1 7/3 3/4\n"
+        "f 2/5 6/6 7/7\n"
+        "f 2/5 7/7 3/8\n"
         "# Left face\n"
-        "f 5/1 1/2 4/3\n"
-        "f 5/1 4/3 8/4\n"
+        "f 5/5 1/6 4/7\n"
+        "f 5/5 4/7 8/8\n"
         "# Top face\n"
-        "f 4/1 3/2 7/3\n"
-        "f 4/1 7/3 8/4\n"
+        "f 4/9 3/10 7/11\n"
+        "f 4/9 7/11 8/12\n"
         "# Bottom face\n"
-        "f 5/1 6/2 2/3\n"
-        "f 5/1 2/3 1/4\n"
+        "f 5/9 6/10 2/11\n"
+        "f 5/9 2/11 1/12\n"
     );
 }
 

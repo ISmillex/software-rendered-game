@@ -35,6 +35,7 @@ typedef struct {
     float  anim_base_y;
     bool   solid;
     AABB   bounds;
+    bool   visible;
 } SceneObject;
 
 #define MAX_SCENE_OBJECTS 256
@@ -57,6 +58,7 @@ void    scene_generate_chunks(const Scene *scene, const Mat4 *vp, Arena *arena,
 void    scene_destroy(Scene *scene);
 
 Texture *texture_load_bmp(const char *path);
+Texture *texture_load(const char *path);
 Mat4     scene_object_model_matrix(const SceneObject *obj);
 
 #endif // SCENE_H

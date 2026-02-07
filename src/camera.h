@@ -16,6 +16,9 @@ typedef struct {
     float move_speed;
     float mouse_sens;
     bool  fly_mode;
+    bool  third_person;
+    float tp_distance;
+    float tp_height;
 } Camera;
 
 void camera_init(Camera *cam);

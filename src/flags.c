@@ -9,6 +9,7 @@ GameFlags g_flags = {
     .show_wireframe     = false,
     .show_zbuffer       = false,
     .show_chunk_borders = false,
+    .third_person       = false,
 };
 
 static void cmd_fog(int argc, const char **argv) {
@@ -61,10 +62,20 @@ static void cmd_noclip(int argc, const char **argv) {
     }
 }
 
+static void cmd_thirdperson(int argc, const char **argv) {
+    (void)argc; (void)argv;
+    g_flags.third_person = !g_flags.third_person;
+    if (g_console) {
+        console_printf(g_console, COLOR_RGB(255, 255, 0), "thirdperson: %s",
+                      g_flags.third_person ? "ON" : "OFF");
+    }
+}
+
 void flags_register_commands(Console *con) {
     console_register_command(con, "fog",       "Toggle fog rendering",    cmd_fog);
     console_register_command(con, "fly",       "Toggle fly mode",         cmd_fly);
     console_register_command(con, "noclip",    "Toggle collision",        cmd_noclip);
     console_register_command(con, "wireframe", "Toggle wireframe mode",   cmd_wireframe);
     console_register_command(con, "zbuffer",   "Show depth buffer",       cmd_zbuffer);
+    console_register_command(con, "thirdperson", "Toggle third-person view", cmd_thirdperson);
 }
