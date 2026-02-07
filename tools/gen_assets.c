@@ -83,8 +83,193 @@ static void gen_crate_texture(const char *path) {
     free(pixels);
 }
 
+static void gen_floor_texture(const char *path) {
+    int w = 64, h = 64;
+    uint8_t *pixels = malloc(w * h * 3);
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int idx = (y * w + x) * 3;
+
+            // Tile grid: 2x2 tiles, each 32px (more visible at distance)
+            int tile_x = x / 32;
+            int tile_y = y / 32;
+            int lx = x % 32;
+            int ly = y % 32;
+
+            // Grout lines (2px borders)
+            if (lx < 2 || ly < 2) {
+                pixels[idx + 0] = 80;
+                pixels[idx + 1] = 80;
+                pixels[idx + 2] = 78;
+                continue;
+            }
+
+            // Base stone gray with per-tile tint variation
+            int tint = (tile_x * 3 + tile_y * 7) % 5;
+            uint8_t r = (uint8_t)(140 + tint * 2 - 4);
+            uint8_t g = (uint8_t)(138 + tint - 2);
+            uint8_t b = (uint8_t)(130 + tint - 2);
+
+            // Per-pixel noise for roughness
+            unsigned int hash = ((unsigned int)(x * 2654435761u) ^ (unsigned int)(y * 2246822519u));
+            int noise = (int)(hash % 17) - 8;
+            r = (uint8_t)(r + noise);
+            g = (uint8_t)(g + noise);
+            b = (uint8_t)(b + noise);
+
+            pixels[idx + 0] = r;
+            pixels[idx + 1] = g;
+            pixels[idx + 2] = b;
+        }
+    }
+
+    write_bmp(path, pixels, w, h);
+    free(pixels);
+}
+
+static void gen_wall_texture(const char *path) {
+    int w = 64, h = 64;
+    uint8_t *pixels = malloc(w * h * 3);
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int idx = (y * w + x) * 3;
+
+            // Brick layout: 8px tall rows, 16px wide bricks
+            int row = y / 8;
+            int offset = (row % 2) * 8;  // stagger odd rows
+            int bx = (x + offset) % 64;
+            int ly = y % 8;
+            int lx = bx % 16;
+
+            // Mortar lines
+            if (ly < 2 || lx < 2) {
+                pixels[idx + 0] = 180;
+                pixels[idx + 1] = 175;
+                pixels[idx + 2] = 165;
+                continue;
+            }
+
+            // Brick body: warm red-brown
+            int brick_col = bx / 16;
+            int brick_var = (brick_col * 13 + row * 7) % 11;
+            uint8_t r = (uint8_t)(155 + brick_var - 5);
+            uint8_t g = (uint8_t)(75 + brick_var / 2 - 2);
+            uint8_t b = (uint8_t)(55 + brick_var / 3 - 1);
+
+            // Per-pixel noise
+            unsigned int hash = ((unsigned int)(x * 2654435761u) ^ (unsigned int)(y * 2246822519u));
+            int noise = (int)(hash % 13) - 6;
+            r = (uint8_t)(r + noise);
+            g = (uint8_t)(g + noise / 2);
+            b = (uint8_t)(b + noise / 3);
+
+            pixels[idx + 0] = r;
+            pixels[idx + 1] = g;
+            pixels[idx + 2] = b;
+        }
+    }
+
+    write_bmp(path, pixels, w, h);
+    free(pixels);
+}
+
+static void write_obj_data(const char *path, const char *content) {
+    FILE *f = fopen(path, "w");
+    if (!f) { fprintf(stderr, "Failed to create %s\n", path); return; }
+    fputs(content, f);
+    fclose(f);
+    printf("Created %s\n", path);
+}
+
+static void gen_floor_obj(const char *path) {
+    // Generate a grid of quads for better strip distribution and culling
+    // Each quad is 1x1 in model space, tiled NxN
+    // The whole floor spans -0.5 to 0.5 (scaled by scene to 40 units)
+    int grid = 8;  // 8x8 grid of quads
+    float cell = 1.0f / grid;
+
+    FILE *f = fopen(path, "w");
+    if (!f) { fprintf(stderr, "Failed to create %s\n", path); return; }
+
+    fprintf(f, "# Floor grid (%dx%d quads)\n", grid, grid);
+
+    // Vertices: (grid+1) x (grid+1)
+    for (int z = 0; z <= grid; z++) {
+        for (int x = 0; x <= grid; x++) {
+            fprintf(f, "v %.4f 0.0 %.4f\n",
+                    -0.5f + x * cell, 0.5f - z * cell);
+        }
+    }
+
+    // UVs: 1 texture repeat per quad
+    fprintf(f, "vt 0.0 0.0\n");  // 1
+    fprintf(f, "vt 1.0 0.0\n");  // 2
+    fprintf(f, "vt 1.0 1.0\n");  // 3
+    fprintf(f, "vt 0.0 1.0\n");  // 4
+
+    // Faces
+    int row = grid + 1;
+    for (int z = 0; z < grid; z++) {
+        for (int x = 0; x < grid; x++) {
+            int v0 = z * row + x + 1;        // OBJ is 1-indexed
+            int v1 = v0 + 1;
+            int v2 = v0 + row + 1;
+            int v3 = v0 + row;
+            fprintf(f, "f %d/1 %d/2 %d/3\n", v0, v1, v2);
+            fprintf(f, "f %d/1 %d/3 %d/4\n", v0, v2, v3);
+        }
+    }
+
+    fclose(f);
+    printf("Created %s (%dx%d grid)\n", path, grid, grid);
+}
+
+static void gen_wall_obj(const char *path) {
+    write_obj_data(path,
+        "# Wall segment: 1.0 x 1.0 x 0.1\n"
+        "v -0.5 -0.5  0.05\n"
+        "v  0.5 -0.5  0.05\n"
+        "v  0.5  0.5  0.05\n"
+        "v -0.5  0.5  0.05\n"
+        "v -0.5 -0.5 -0.05\n"
+        "v  0.5 -0.5 -0.05\n"
+        "v  0.5  0.5 -0.05\n"
+        "v -0.5  0.5 -0.05\n"
+        "\n"
+        "vt 0.0 0.0\n"
+        "vt 1.0 0.0\n"
+        "vt 1.0 2.0\n"
+        "vt 0.0 2.0\n"
+        "\n"
+        "# Front face\n"
+        "f 1/1 2/2 3/3\n"
+        "f 1/1 3/3 4/4\n"
+        "# Back face\n"
+        "f 6/1 5/2 8/3\n"
+        "f 6/1 8/3 7/4\n"
+        "# Right face\n"
+        "f 2/1 6/2 7/3\n"
+        "f 2/1 7/3 3/4\n"
+        "# Left face\n"
+        "f 5/1 1/2 4/3\n"
+        "f 5/1 4/3 8/4\n"
+        "# Top face\n"
+        "f 4/1 3/2 7/3\n"
+        "f 4/1 7/3 8/4\n"
+        "# Bottom face\n"
+        "f 5/1 6/2 2/3\n"
+        "f 5/1 2/3 1/4\n"
+    );
+}
+
 int main(void) {
     gen_crate_texture("assets/textures/crate.bmp");
+    gen_floor_texture("assets/textures/floor.bmp");
+    gen_wall_texture("assets/textures/wall.bmp");
+    gen_floor_obj("assets/models/floor.obj");
+    gen_wall_obj("assets/models/wall.obj");
     printf("Assets generated successfully!\n");
     return 0;
 }

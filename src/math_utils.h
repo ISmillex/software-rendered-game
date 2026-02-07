@@ -146,6 +146,14 @@ static inline Mat4 mat4_scale_uniform(float s) {
     return m;
 }
 
+static inline Mat4 mat4_scale_vec3(Vec3 s) {
+    Mat4 m = mat4_identity();
+    m.m[0][0] = s.x;
+    m.m[1][1] = s.y;
+    m.m[2][2] = s.z;
+    return m;
+}
+
 static inline Mat4 mat4_rotate_x(float radians) {
     Mat4 m = mat4_identity();
     float c = cosf(radians);

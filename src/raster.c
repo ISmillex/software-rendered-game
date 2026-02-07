@@ -78,6 +78,11 @@ void raster_textured_triangle(const Chunk * restrict chunk,
     if (fabsf(area) < 1e-6f) return;
     float inv_area = 1.0f / area;
 
+    // Pre-divide UVs by W for perspective-correct interpolation
+    float u0w = uv0.x * v0.inv_w, v0w = uv0.y * v0.inv_w;
+    float u1w = uv1.x * v1.inv_w, v1w = uv1.y * v1.inv_w;
+    float u2w = uv2.x * v2.inv_w, v2w = uv2.y * v2.inv_w;
+
     for (int y = bb_y_min; y < bb_y_max; y++) {
         for (int x = bb_x_min; x < bb_x_max; x++) {
             float px = x + 0.5f;
@@ -94,8 +99,12 @@ void raster_textured_triangle(const Chunk * restrict chunk,
             int idx = y * WINDOW_WIDTH + x;
             if (depth >= zbuf[idx]) continue;
 
-            float u = w0 * uv0.x + w1 * uv1.x + w2 * uv2.x;
-            float v_coord = w0 * uv0.y + w1 * uv1.y + w2 * uv2.y;
+            // Perspective-correct UV: interpolate u/w and 1/w, then divide
+            float one_over_w = w0 * v0.inv_w + w1 * v1.inv_w + w2 * v2.inv_w;
+            float w_at_pixel = 1.0f / one_over_w;
+
+            float u = (w0 * u0w + w1 * u1w + w2 * u2w) * w_at_pixel;
+            float v_coord = (w0 * v0w + w1 * v1w + w2 * v2w) * w_at_pixel;
 
             u = u - floorf(u);
             v_coord = v_coord - floorf(v_coord);

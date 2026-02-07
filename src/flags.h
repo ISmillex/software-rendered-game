@@ -7,6 +7,7 @@
 typedef struct {
     bool fog_enabled;
     bool fly_mode;
+    bool noclip;
     bool show_wireframe;
     bool show_zbuffer;
     bool show_chunk_borders;

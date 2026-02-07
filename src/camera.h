@@ -4,6 +4,8 @@
 #include "math_utils.h"
 #include "input.h"
 
+typedef struct Scene Scene;
+
 typedef struct {
     Vec3  position;
     float yaw;
@@ -18,6 +20,7 @@ typedef struct {
 
 void camera_init(Camera *cam);
 void camera_handle_input(Camera *cam, const InputState *input, float dt);
+void camera_apply_collision(Camera *cam, const Scene *scene);
 Mat4 camera_view_matrix(const Camera *cam);
 Mat4 camera_projection_matrix(const Camera *cam, float aspect);
 Mat4 camera_vp_matrix(const Camera *cam, float aspect);

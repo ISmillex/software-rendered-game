@@ -63,23 +63,66 @@ int main(int argc, char *argv[]) {
 
     // 9. Scene - load models and place objects
     scene_init(&scene);
+
+    // Floor
+    Model *floor_model = scene_load_model(&scene, "assets/models/floor.obj",
+                                           "assets/textures/floor.bmp");
+    if (floor_model) {
+        int idx = scene_add_object(&scene, floor_model,
+                                   vec3(0, 0, 0), vec3(0, 0, 0),
+                                   vec3(40.0f, 1.0f, 40.0f));
+        if (idx >= 0) scene_object_set_solid(&scene, idx);
+    }
+
+    // Walls
+    Model *wall_model = scene_load_model(&scene, "assets/models/wall.obj",
+                                          "assets/textures/wall.bmp");
+    if (wall_model) {
+        int idx;
+        // North wall (z = -15)
+        idx = scene_add_object(&scene, wall_model,
+                               vec3(0, 2.5f, -15.0f), vec3(0, 0, 0),
+                               vec3(30.0f, 5.0f, 1.0f));
+        if (idx >= 0) scene_object_set_solid(&scene, idx);
+        // South wall (z = 15)
+        idx = scene_add_object(&scene, wall_model,
+                               vec3(0, 2.5f, 15.0f), vec3(0, 0, 0),
+                               vec3(30.0f, 5.0f, 1.0f));
+        if (idx >= 0) scene_object_set_solid(&scene, idx);
+        // West wall (x = -15)
+        idx = scene_add_object(&scene, wall_model,
+                               vec3(-15.0f, 2.5f, 0), vec3(0, (float)M_PI / 2.0f, 0),
+                               vec3(30.0f, 5.0f, 1.0f));
+        if (idx >= 0) scene_object_set_solid(&scene, idx);
+        // East wall (x = 15)
+        idx = scene_add_object(&scene, wall_model,
+                               vec3(15.0f, 2.5f, 0), vec3(0, (float)M_PI / 2.0f, 0),
+                               vec3(30.0f, 5.0f, 1.0f));
+        if (idx >= 0) scene_object_set_solid(&scene, idx);
+    }
+
+    // Cubes
     Model *cube_model = scene_load_model(&scene, "assets/models/cube.obj",
                                           "assets/textures/crate.bmp");
     if (cube_model) {
-        // Central cube
-        scene_add_object(&scene, cube_model,
-                         vec3(0, 0, 0), vec3(0, 0, 0), 1.0f);
+        // Central cube (sitting on floor: y=0.5 so bottom is at y=0)
+        int cidx = scene_add_object(&scene, cube_model,
+                         vec3(0, 0.5f, 0), vec3(0, 0, 0),
+                         vec3(1.0f, 1.0f, 1.0f));
+        if (cidx >= 0) scene_object_set_solid(&scene, cidx);
         // Additional cubes in a grid
         for (int x = -3; x <= 3; x += 3) {
             for (int z = -3; z <= 3; z += 3) {
                 if (x == 0 && z == 0) continue;
                 int idx = scene_add_object(&scene, cube_model,
-                                 vec3((float)x, 0, (float)z),
-                                 vec3(0, 0, 0), 0.7f);
+                                 vec3((float)x, 0.35f, (float)z),
+                                 vec3(0, 0, 0),
+                                 vec3(0.7f, 0.7f, 0.7f));
                 if (idx >= 0) {
                     scene.objects[idx].anim_bounce = true;
                     scene.objects[idx].anim_speed = 1.0f + (float)(abs(x) + abs(z)) * 0.2f;
                     scene.objects[idx].anim_amplitude = 0.3f;
+                    scene_object_set_solid(&scene, idx);
                 }
             }
         }
@@ -144,6 +187,7 @@ int main(int argc, char *argv[]) {
             console_handle_input(&console, &input_state);
         } else {
             camera_handle_input(&camera, &input_state, dt);
+            camera_apply_collision(&camera, &scene);
             hud_handle_input(&hud, &input_state);
         }
 

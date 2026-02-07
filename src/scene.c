@@ -154,7 +154,7 @@ Model *scene_load_model(Scene *scene, const char *obj_path, const char *texture_
     return model;
 }
 
-int scene_add_object(Scene *scene, Model *model, Vec3 position, Vec3 rotation, float scale) {
+int scene_add_object(Scene *scene, Model *model, Vec3 position, Vec3 rotation, Vec3 scale) {
     if (scene->object_count >= MAX_SCENE_OBJECTS) return -1;
     int idx = scene->object_count++;
     SceneObject *obj = &scene->objects[idx];
@@ -167,6 +167,8 @@ int scene_add_object(Scene *scene, Model *model, Vec3 position, Vec3 rotation, f
     obj->anim_speed     = 1.0f;
     obj->anim_amplitude = 0.0f;
     obj->anim_base_y    = position.y;
+    obj->solid          = false;
+    obj->bounds         = (AABB){ vec3(0,0,0), vec3(0,0,0) };
     return idx;
 }
 
@@ -176,6 +178,9 @@ void scene_update(Scene *scene, float dt) {
         if (obj->anim_bounce) {
             obj->anim_time += dt * obj->anim_speed;
             obj->position.y = obj->anim_base_y + sinf(obj->anim_time) * obj->anim_amplitude;
+            if (obj->solid) {
+                obj->bounds = scene_object_compute_aabb(obj);
+            }
         }
     }
 }
@@ -185,10 +190,66 @@ Mat4 scene_object_model_matrix(const SceneObject *obj) {
     Mat4 rx = mat4_rotate_x(obj->rotation.x);
     Mat4 ry = mat4_rotate_y(obj->rotation.y);
     Mat4 rz = mat4_rotate_z(obj->rotation.z);
-    Mat4 s  = mat4_scale_uniform(obj->scale);
+    Mat4 s  = mat4_scale_vec3(obj->scale);
 
     Mat4 result = mat4_multiply(t, mat4_multiply(ry, mat4_multiply(rx, mat4_multiply(rz, s))));
     return result;
+}
+
+AABB scene_object_compute_aabb(const SceneObject *obj) {
+    const Model *m = obj->model;
+    if (!m || m->vertex_count == 0) {
+        return (AABB){ obj->position, obj->position };
+    }
+
+    // Find local AABB from model vertices
+    Vec3 local_min = m->vertices[0];
+    Vec3 local_max = m->vertices[0];
+    for (int i = 1; i < m->vertex_count; i++) {
+        local_min.x = minf(local_min.x, m->vertices[i].x);
+        local_min.y = minf(local_min.y, m->vertices[i].y);
+        local_min.z = minf(local_min.z, m->vertices[i].z);
+        local_max.x = maxf(local_max.x, m->vertices[i].x);
+        local_max.y = maxf(local_max.y, m->vertices[i].y);
+        local_max.z = maxf(local_max.z, m->vertices[i].z);
+    }
+
+    // Transform all 8 corners of local AABB through model matrix
+    Mat4 mat = scene_object_model_matrix(obj);
+    Vec3 corners[8] = {
+        vec3(local_min.x, local_min.y, local_min.z),
+        vec3(local_max.x, local_min.y, local_min.z),
+        vec3(local_min.x, local_max.y, local_min.z),
+        vec3(local_max.x, local_max.y, local_min.z),
+        vec3(local_min.x, local_min.y, local_max.z),
+        vec3(local_max.x, local_min.y, local_max.z),
+        vec3(local_min.x, local_max.y, local_max.z),
+        vec3(local_max.x, local_max.y, local_max.z),
+    };
+
+    Vec4 first = mat4_mul_vec4(mat, vec4_from_vec3(corners[0], 1.0f));
+    AABB result;
+    result.min = vec3(first.x, first.y, first.z);
+    result.max = result.min;
+
+    for (int i = 1; i < 8; i++) {
+        Vec4 transformed = mat4_mul_vec4(mat, vec4_from_vec3(corners[i], 1.0f));
+        result.min.x = minf(result.min.x, transformed.x);
+        result.min.y = minf(result.min.y, transformed.y);
+        result.min.z = minf(result.min.z, transformed.z);
+        result.max.x = maxf(result.max.x, transformed.x);
+        result.max.y = maxf(result.max.y, transformed.y);
+        result.max.z = maxf(result.max.z, transformed.z);
+    }
+
+    return result;
+}
+
+void scene_object_set_solid(Scene *scene, int idx) {
+    if (idx < 0 || idx >= scene->object_count) return;
+    SceneObject *obj = &scene->objects[idx];
+    obj->solid = true;
+    obj->bounds = scene_object_compute_aabb(obj);
 }
 
 // Near-plane clipping helper
@@ -365,11 +426,16 @@ void scene_generate_chunks(const Scene *scene, const Mat4 *vp, Arena *arena,
                 float cross_z = edge1_x * edge2_y - edge1_y * edge2_x;
                 if (cross_z >= 0) continue;
 
+                // 1/w for perspective-correct interpolation
+                float iw0 = 1.0f / clip_out[t][0].w;
+                float iw1 = 1.0f / clip_out[t][1].w;
+                float iw2 = 1.0f / clip_out[t][2].w;
+
                 // Swap verts 1 and 2 so the rasterizer receives CCW winding
                 Chunk *chunk = &chunks[*chunk_count];
-                chunk->verts[0] = (ScreenVertex){ sx0, sy0, sz0 };
-                chunk->verts[1] = (ScreenVertex){ sx2, sy2, sz2 };
-                chunk->verts[2] = (ScreenVertex){ sx1, sy1, sz1 };
+                chunk->verts[0] = (ScreenVertex){ sx0, sy0, sz0, iw0 };
+                chunk->verts[1] = (ScreenVertex){ sx2, sy2, sz2, iw2 };
+                chunk->verts[2] = (ScreenVertex){ sx1, sy1, sz1, iw1 };
                 chunk->depth_sort_key = minf(sz0, minf(sz1, sz2));
 
                 if (has_uvs) {

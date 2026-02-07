@@ -1,4 +1,9 @@
 #include "camera.h"
+#include "scene.h"
+#include "flags.h"
+
+#define PLAYER_EYE_HEIGHT 1.0f
+#define PLAYER_RADIUS     0.2f
 
 void camera_init(Camera *cam) {
     cam->position   = vec3(0.0f, 1.0f, 5.0f);
@@ -35,13 +40,65 @@ void camera_handle_input(Camera *cam, const InputState *input, float dt) {
     if (input->keys_down[SDL_SCANCODE_D]) movement = vec3_add(movement, right);
     if (input->keys_down[SDL_SCANCODE_A]) movement = vec3_sub(movement, right);
 
-    if (input->keys_down[SDL_SCANCODE_SPACE])  movement.y += 1.0f;
-    if (input->keys_down[SDL_SCANCODE_LSHIFT]) movement.y -= 1.0f;
+    if (cam->fly_mode) {
+        if (input->keys_down[SDL_SCANCODE_SPACE])  movement.y += 1.0f;
+        if (input->keys_down[SDL_SCANCODE_LSHIFT]) movement.y -= 1.0f;
+    }
 
     if (vec3_length(movement) > 0.0f) {
         movement = vec3_normalize(movement);
         cam->position = vec3_add(cam->position,
                                  vec3_scale(movement, cam->move_speed * dt));
+    }
+}
+
+void camera_apply_collision(Camera *cam, const Scene *scene) {
+    if (cam->fly_mode || g_flags.noclip) return;
+
+    // Ground constraint: keep feet at or above y=0
+    if (cam->position.y < PLAYER_EYE_HEIGHT) {
+        cam->position.y = PLAYER_EYE_HEIGHT;
+    }
+
+    // Collide against solid scene objects
+    for (int i = 0; i < scene->object_count; i++) {
+        const SceneObject *obj = &scene->objects[i];
+        if (!obj->solid) continue;
+
+        AABB bb = obj->bounds;
+
+        // Check Y overlap (player feet to head vs AABB)
+        float feet_y = cam->position.y - PLAYER_EYE_HEIGHT;
+        float head_y = cam->position.y + 0.1f;
+        if (feet_y >= bb.max.y || head_y <= bb.min.y) continue;
+
+        // XZ circle-vs-AABB test
+        float closest_x = clampf(cam->position.x, bb.min.x, bb.max.x);
+        float closest_z = clampf(cam->position.z, bb.min.z, bb.max.z);
+
+        float dx = cam->position.x - closest_x;
+        float dz = cam->position.z - closest_z;
+        float dist_sq = dx * dx + dz * dz;
+
+        if (dist_sq < PLAYER_RADIUS * PLAYER_RADIUS) {
+            float dist = sqrtf(dist_sq);
+            if (dist > 1e-6f) {
+                float penetration = PLAYER_RADIUS - dist;
+                cam->position.x += (dx / dist) * penetration;
+                cam->position.z += (dz / dist) * penetration;
+            } else {
+                // Player center is inside the AABB — push out along shortest axis
+                float push_xn = cam->position.x - bb.min.x;
+                float push_xp = bb.max.x - cam->position.x;
+                float push_zn = cam->position.z - bb.min.z;
+                float push_zp = bb.max.z - cam->position.z;
+                float min_push = minf(minf(push_xn, push_xp), minf(push_zn, push_zp));
+                if (min_push == push_xn)      cam->position.x = bb.min.x - PLAYER_RADIUS;
+                else if (min_push == push_xp) cam->position.x = bb.max.x + PLAYER_RADIUS;
+                else if (min_push == push_zn) cam->position.z = bb.min.z - PLAYER_RADIUS;
+                else                          cam->position.z = bb.max.z + PLAYER_RADIUS;
+            }
+        }
     }
 }
 

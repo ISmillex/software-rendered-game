@@ -18,6 +18,7 @@ typedef enum {
 typedef struct {
     float x, y;
     float z;
+    float inv_w;  // 1/clip.w for perspective-correct interpolation
 } ScreenVertex;
 
 typedef struct {
