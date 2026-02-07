@@ -1,0 +1,4 @@
+-std=c11
+-Isrc/
+-I/opt/homebrew/include
+-I/usr/local/include
